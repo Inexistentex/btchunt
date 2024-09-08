@@ -16,7 +16,7 @@ import (
 const (
 	checkInterval  = 200000
 	jumpInterval   = 1800
-	numGoroutines  = 2
+	numGoroutines  = 16
 	blockSize      = int64(1000)
 	batchSize      = 100000 // Tamanho do lote para verificação
 )
