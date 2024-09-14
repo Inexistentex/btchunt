@@ -12,6 +12,7 @@ import (
 	"math/rand"
         "github.com/dustin/go-humanize"
 	"btchunt/wif" // Importando o pacote wif
+        "github.com/fatih/color"
 )
 
 // IntervalJumper estrutura para gerenciar o salto entre intervalos
@@ -27,36 +28,23 @@ type IntervalJumper struct {
 // Start inicia o processo de salto entre intervalos
 func (ij *IntervalJumper) Start(jumpInterval int) {
 	go func() {
-		// Cria um slice com índices que representam cada intervalo
-		indices := rand.Perm(len(ij.Ranges.Ranges)) // Gera uma permutação aleatória dos índices
-		visited := make(map[int]bool)                // Map para rastrear quais índices já foram visitados
-		indexCounter := 0                            // Contador para percorrer o slice de índices
+		// Cria uma permutação aleatória dos índices dos intervalos
+		indices := rand.Perm(len(ij.Ranges.Ranges))
+		indexCounter := 0 // Contador para percorrer os índices
 
 		for {
 			select {
 			case <-ij.StopSignal:
 				return
 			default:
-				// Se todos os índices foram visitados, reinicia a permutação
+				// Se todos os índices foram percorridos, reinicia a permutação
 				if indexCounter >= len(indices) {
-					indices = rand.Perm(len(ij.Ranges.Ranges))
-					visited = make(map[int]bool)
+					indices = rand.Perm(len(ij.Ranges.Ranges)) // Gera nova permutação
 					indexCounter = 0
 				}
 
-				// Obtém o próximo índice não visitado
-				for visited[indices[indexCounter]] {
-					indexCounter++
-					if indexCounter >= len(indices) {
-						indices = rand.Perm(len(ij.Ranges.Ranges))
-						visited = make(map[int]bool)
-						indexCounter = 0
-					}
-				}
-
-				// Marca o índice atual como visitado
+				// Obtém o índice atual da permutação
 				currentIndex := indices[indexCounter]
-				visited[currentIndex] = true
 				indexCounter++
 
 				// Carrega o intervalo correspondente ao índice atual
@@ -65,7 +53,10 @@ func (ij *IntervalJumper) Start(jumpInterval int) {
 				ij.MaxPrivKeyInt.SetString(rangeData.Max[2:], 16)
 				ij.Wallets = strings.Split(rangeData.Status, ", ")
 
-				// Aguarda antes de pular para o próximo intervalo
+				// Exibe o intervalo atual (opcional para debugging)
+				color.Yellow("Saltando para intervalo %d: Min: %s, Max: %s\n", currentIndex, rangeData.Min, rangeData.Max)
+
+				// Aguarda o intervalo de tempo antes de pular para o próximo
 				time.Sleep(time.Duration(jumpInterval) * time.Second)
 			}
 		}
@@ -77,6 +68,7 @@ type Range struct {
 	Min    string `json:"min"`
 	Max    string `json:"max"`
 	Status string `json:"status"`
+        OriginalStatus string // Adiciona um campo para armazenar os endereços originais
 }
 
 // Ranges contém uma lista de Range
@@ -86,31 +78,40 @@ type Ranges struct {
 
 // LoadRanges carrega os intervalos de chaves privadas a partir de um arquivo JSON e converte os endereços em hash160
 func LoadRanges(filename string) (*Ranges, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
+    file, err := os.Open(filename)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
 
-	var ranges Ranges
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&ranges)
-	if err != nil {
-		return nil, err
-	}
+    var ranges Ranges
+    decoder := json.NewDecoder(file)
+    err = decoder.Decode(&ranges)
+    if err != nil {
+        return nil, err
+    }
 
-	// Convert addresses to hash160
-	for i := range ranges.Ranges {
-		addresses := strings.Split(ranges.Ranges[i].Status, ", ")
-		var hash160s []string
-		for _, address := range addresses {
-			hash160 := wif.AddressToHash160(address) // Usando a função do pacote wif
-			hash160s = append(hash160s, fmt.Sprintf("%x", hash160))
-		}
-		ranges.Ranges[i].Status = strings.Join(hash160s, ", ")
-	}
+    // Adiciona um campo para armazenar os endereços originais
+    for i := range ranges.Ranges {
+        addresses := strings.Split(ranges.Ranges[i].Status, ", ")
 
-	return &ranges, nil
+        // Cria um campo separado para armazenar os endereços originais
+        originalAddresses := make([]string, len(addresses))
+        copy(originalAddresses, addresses)
+
+        // Converte endereços para hash160
+        var hash160s []string
+        for _, address := range addresses {
+            hash160 := wif.AddressToHash160(address) // Usando a função do pacote wif
+            hash160s = append(hash160s, fmt.Sprintf("%x", hash160))
+        }
+        ranges.Ranges[i].Status = strings.Join(hash160s, ", ")
+
+        // Armazena os endereços originais em um campo separado
+        ranges.Ranges[i].OriginalStatus = strings.Join(originalAddresses, ", ")
+    }
+
+    return &ranges, nil
 }
 
 // GetRandomBlock gera um bloco de chaves privadas aleatórias dentro do intervalo fornecido
