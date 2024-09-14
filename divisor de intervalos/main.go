@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"math/big"
@@ -104,8 +103,8 @@ func main() {
 		}
 
 		ranges[i] = Range{
-			Min:    "0x" + hex.EncodeToString(rangeMin.Bytes()),
-			Max:    "0x" + hex.EncodeToString(rangeMax.Bytes()),
+			Min:    "0x" + rangeMin.Text(16), // Usar Text(16) para evitar o zero extra
+			Max:    "0x" + rangeMax.Text(16),
 			Status: chosenPuzzle.Status,
 		}
 
