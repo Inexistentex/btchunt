@@ -62,6 +62,21 @@ func (ij *IntervalJumper) Start(jumpInterval int) {
 		}
 	}()
 }
+// Função para verificar se há 4 ou mais caracteres repetidos consecutivamente (exceto '0')
+func hasRepeatedCharacters(key string) bool {
+	repeatCount := 1
+	for i := 1; i < len(key); i++ {
+		if key[i] == key[i-1] && key[i] != '0' {
+			repeatCount++
+			if repeatCount >= 4 {
+				return true
+			}
+		} else {
+			repeatCount = 1
+		}
+	}
+	return false
+}
 
 // Range representa um intervalo de chaves privadas
 type Range struct {
@@ -156,20 +171,31 @@ func SearchInBlockBatch(wallets []string, blockSize int64, minPrivKey, maxPrivKe
 
 // verifyBatch verifica um lote de chaves de uma só vez
 func verifyBatch(privKeyBatch []*big.Int, wallets []string, stopSignal chan struct{}, keysChecked *int64, checkInterval int64, startTime time.Time) {
-	pubKeys := make([][]byte, len(privKeyBatch))
-	for i, privKey := range privKeyBatch {
+	pubKeys := make([][]byte, 0, len(privKeyBatch))
+
+	for _, privKey := range privKeyBatch {
 		privKeyBytes := privKey.FillBytes(make([]byte, 32))
-		pubKeys[i] = wif.GeneratePublicKey(privKeyBytes) // Usando função do pacote wif
+
+		// Verifica se a chave contém caracteres repetidos
+		privKeyHex := fmt.Sprintf("%064x", privKey) // Converte a chave para string hexadecimal
+		if hasRepeatedCharacters(privKeyHex) {
+		// fmt.Printf("Chave privada ignorada: %s contém 4 ou mais caracteres repetidos.\n", privKeyHex)
+			continue // Pula a chave privada se ela contiver 4 ou mais caracteres repetidos
+		}
+
+		// Se não tiver caracteres repetidos, gera a chave pública
+		pubKeys = append(pubKeys, wif.GeneratePublicKey(privKeyBytes))
 	}
 
+	// Processa as chaves públicas geradas
 	for i, pubKey := range pubKeys {
-		addressHash160 := wif.Hash160(pubKey) // Usando função do pacote wif
+		addressHash160 := wif.Hash160(pubKey)
 		addressHash160Hex := fmt.Sprintf("%x", addressHash160)
 
 		if contains(wallets, addressHash160Hex) {
 			privKey := privKeyBatch[i]
-			wifKey := wif.PrivateKeyToWIF(privKey) // Usando função do pacote wif
-			address := wif.PublicKeyToAddress(pubKey) // Usando função do pacote wif
+			wifKey := wif.PrivateKeyToWIF(privKey)
+			address := wif.PublicKeyToAddress(pubKey)
 			saveFoundKeyDetails(privKey, wifKey, address)
 
 			close(stopSignal)
