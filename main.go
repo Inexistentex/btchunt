@@ -15,7 +15,7 @@ import (
 
 const (
 	checkInterval  = 200000 // Checagem a cada 200k de chaves
-	jumpInterval   = 1800 // Tempo em segundos para verificar um intervalo
+	jumpInterval   = 120 // Tempo em segundos para pular para outro intervalo
 	numGoroutines  = 4 // Threads da CPU
 	blockSize      = int64(1000) // Tamanho dos blocos
 	batchSize      = 10000 // Tamanho do lote para verificação
