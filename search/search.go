@@ -171,21 +171,46 @@ func SearchInBlockBatch(wallets []string, blockSize int64, minPrivKey, maxPrivKe
 
 // verifyBatch verifica um lote de chaves de uma só vez
 func verifyBatch(privKeyBatch []*big.Int, wallets []string, stopSignal chan struct{}, keysChecked *int64, checkInterval int64, startTime time.Time) {
-	pubKeys := make([][]byte, 0, len(privKeyBatch))
+    var validPrivKeys []*big.Int
+    var pubKeys [][]byte
 
-	for _, privKey := range privKeyBatch {
-		privKeyBytes := privKey.FillBytes(make([]byte, 32))
+    for _, privKey := range privKeyBatch {
+        privKeyBytes := privKey.FillBytes(make([]byte, 32))
 
-		// Verifica se a chave contém caracteres repetidos
-		privKeyHex := fmt.Sprintf("%064x", privKey) // Converte a chave para string hexadecimal
-		if hasRepeatedCharacters(privKeyHex) {
-		// fmt.Printf("Chave privada ignorada: %s contém 4 ou mais caracteres repetidos.\n", privKeyHex)
-			continue // Pula a chave privada se ela contiver 4 ou mais caracteres repetidos
-		}
+        // Verifica se a chave contém caracteres repetidos
+        privKeyHex := fmt.Sprintf("%064x", privKey) // Converte a chave para string hexadecimal
+        if hasRepeatedCharacters(privKeyHex) {
+            // Chave privada ignorada
+            continue // Pula a chave privada se ela contiver 4 ou mais caracteres repetidos
+        }
 
-		// Se não tiver caracteres repetidos, gera a chave pública
-		pubKeys = append(pubKeys, wif.GeneratePublicKey(privKeyBytes))
-	}
+        // Se não tiver caracteres repetidos, gera a chave pública
+        pubKey := wif.GeneratePublicKey(privKeyBytes)
+        pubKeys = append(pubKeys, pubKey)
+        validPrivKeys = append(validPrivKeys, privKey)
+    }
+
+    // Processa as chaves públicas geradas
+    for i, pubKey := range pubKeys {
+        addressHash160 := wif.Hash160(pubKey)
+        addressHash160Hex := fmt.Sprintf("%x", addressHash160)
+
+        if contains(wallets, addressHash160Hex) {
+            privKey := validPrivKeys[i]
+            wifKey := wif.PrivateKeyToWIF(privKey)
+            address := wif.PublicKeyToAddress(pubKey)
+            saveFoundKeyDetails(privKey, wifKey, address)
+
+            close(stopSignal)
+            return
+        }
+    }
+
+    if atomic.AddInt64(keysChecked, int64(len(privKeyBatch)))%checkInterval == 0 {
+        printProgress(startTime, keysChecked)
+    }
+}
+
 
 	// Processa as chaves públicas geradas
 	for i, pubKey := range pubKeys {
