@@ -62,21 +62,6 @@ func (ij *IntervalJumper) Start(jumpInterval int) {
 		}
 	}()
 }
-// Função para verificar se há 4 ou mais caracteres repetidos consecutivamente (exceto '0')
-func hasRepeatedCharacters(key string) bool {
-	repeatCount := 1
-	for i := 1; i < len(key); i++ {
-		if key[i] == key[i-1] && key[i] != '0' {
-			repeatCount++
-			if repeatCount >= 4 {
-				return true
-			}
-		} else {
-			repeatCount = 1
-		}
-	}
-	return false
-}
 
 // Range representa um intervalo de chaves privadas
 type Range struct {
@@ -142,7 +127,6 @@ func GetRandomBlock(minPrivKey, maxPrivKey *big.Int, blockSize int64) *big.Int {
 	if blockEnd.Cmp(maxPrivKey) > 0 {
 		// Se o bloco ultrapassar o maxPrivKey, ajusta para estar dentro do intervalo
 		block.Sub(maxPrivKey, big.NewInt(blockSize))
-               fmt.Printf("bloco %s \n", blockSize)
 	}
 
 	return block
@@ -172,44 +156,30 @@ func SearchInBlockBatch(wallets []string, blockSize int64, minPrivKey, maxPrivKe
 
 // verifyBatch verifica um lote de chaves de uma só vez
 func verifyBatch(privKeyBatch []*big.Int, wallets []string, stopSignal chan struct{}, keysChecked *int64, checkInterval int64, startTime time.Time) {
-    var validPrivKeys []*big.Int
-    var pubKeys [][]byte
+	pubKeys := make([][]byte, len(privKeyBatch))
+	for i, privKey := range privKeyBatch {
+		privKeyBytes := privKey.FillBytes(make([]byte, 32))
+		pubKeys[i] = wif.GeneratePublicKey(privKeyBytes) // Usando função do pacote wif
+	}
 
-    for _, privKey := range privKeyBatch {
-        privKeyBytes := privKey.FillBytes(make([]byte, 32))
+	for i, pubKey := range pubKeys {
+		addressHash160 := wif.Hash160(pubKey) // Usando função do pacote wif
+		addressHash160Hex := fmt.Sprintf("%x", addressHash160)
 
-        // Verifica se a chave contém caracteres repetidos
-        privKeyHex := fmt.Sprintf("%064x", privKey) // Converte a chave para string hexadecimal
-        if hasRepeatedCharacters(privKeyHex) {
-            // Chave privada ignorada
-            continue // Pula a chave privada se ela contiver 4 ou mais caracteres repetidos
-        }
+		if contains(wallets, addressHash160Hex) {
+			privKey := privKeyBatch[i]
+			wifKey := wif.PrivateKeyToWIF(privKey) // Usando função do pacote wif
+			address := wif.PublicKeyToAddress(pubKey) // Usando função do pacote wif
+			saveFoundKeyDetails(privKey, wifKey, address)
 
-        // Se não tiver caracteres repetidos, gera a chave pública
-        pubKey := wif.GeneratePublicKey(privKeyBytes)
-        pubKeys = append(pubKeys, pubKey)
-        validPrivKeys = append(validPrivKeys, privKey)
-    }
+			close(stopSignal)
+			return
+		}
+	}
 
-    // Processa as chaves públicas geradas
-    for i, pubKey := range pubKeys {
-        addressHash160 := wif.Hash160(pubKey)
-        addressHash160Hex := fmt.Sprintf("%x", addressHash160)
-
-        if contains(wallets, addressHash160Hex) {
-            privKey := validPrivKeys[i]
-            wifKey := wif.PrivateKeyToWIF(privKey)
-            address := wif.PublicKeyToAddress(pubKey)
-            saveFoundKeyDetails(privKey, wifKey, address)
-
-            close(stopSignal)
-            return
-        }
-    }
-
-    if atomic.AddInt64(keysChecked, int64(len(privKeyBatch)))%checkInterval == 0 {
-        printProgress(startTime, keysChecked)
-    }
+	if atomic.AddInt64(keysChecked, int64(len(privKeyBatch)))%checkInterval == 0 {
+		printProgress(startTime, keysChecked)
+	}
 }
 
 // contains verifica se um endereço hash está na lista de wallets
