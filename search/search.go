@@ -142,6 +142,7 @@ func GetRandomBlock(minPrivKey, maxPrivKey *big.Int, blockSize int64) *big.Int {
 	if blockEnd.Cmp(maxPrivKey) > 0 {
 		// Se o bloco ultrapassar o maxPrivKey, ajusta para estar dentro do intervalo
 		block.Sub(maxPrivKey, big.NewInt(blockSize))
+               fmt.Printf("bloco %s \n", blockSize)
 	}
 
 	return block
@@ -209,28 +210,6 @@ func verifyBatch(privKeyBatch []*big.Int, wallets []string, stopSignal chan stru
     if atomic.AddInt64(keysChecked, int64(len(privKeyBatch)))%checkInterval == 0 {
         printProgress(startTime, keysChecked)
     }
-}
-
-
-	// Processa as chaves públicas geradas
-	for i, pubKey := range pubKeys {
-		addressHash160 := wif.Hash160(pubKey)
-		addressHash160Hex := fmt.Sprintf("%x", addressHash160)
-
-		if contains(wallets, addressHash160Hex) {
-			privKey := privKeyBatch[i]
-			wifKey := wif.PrivateKeyToWIF(privKey)
-			address := wif.PublicKeyToAddress(pubKey)
-			saveFoundKeyDetails(privKey, wifKey, address)
-
-			close(stopSignal)
-			return
-		}
-	}
-
-	if atomic.AddInt64(keysChecked, int64(len(privKeyBatch)))%checkInterval == 0 {
-		printProgress(startTime, keysChecked)
-	}
 }
 
 // contains verifica se um endereço hash está na lista de wallets
