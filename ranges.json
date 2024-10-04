@@ -1,14 +1,9 @@
 {
   "ranges": [
     {
-      "min": "0x60000000000000000",
-      "max": "0x6ffffffffffffffff",
-      "status": "1BY8GQbnueYofwSuFAT3USAhGjPrkxDdW9"
-    },
-    {
-      "min": "0x70000000000000000",
-      "max": "0x7ffffffffffffffff",
-      "status": "1BY8GQbnueYofwSuFAT3USAhGjPrkxDdW9"
+      "min": "0x2832ed74f2ac59f6e",
+      "max": "0x2832ed74f2bf6cc6e",
+      "status": "13zb1hQbWVsc2S7ZTZnP2G4undNNpdh5so"
     }
   ]
 }
