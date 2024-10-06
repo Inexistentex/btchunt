@@ -14,11 +14,11 @@ import (
 )
 
 const (
-	checkInterval  = 200000 // Checagem a cada 200k de chaves
+	checkInterval  = 2000000 // Checagem a cada 200k de chaves
 	jumpInterval   = 60 // Tempo em segundos para ver0ificar um intervalo
 	numGoroutines  = 4 // Threads da CPU
-	blockSize      = int64(1000) // Tamanho dos blocos
-	batchSize      = 10000 // Tamanho do lote para verificação
+	blockSize      = int64(1000000) // Tamanho dos blocos
+	batchSize      = 1000000 // Tamanho do lote para verificação
 )
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
