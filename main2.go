@@ -18,7 +18,7 @@ const (
 
 func main() {
     // Carrega os ranges do arquivo
-    ranges, err := search.LoadRanges("ranges.json")
+    ranges, err := search.LoadRanges("ranges2.json")
     if err != nil {
         log.Fatalf("Failed to load ranges: %v", err)
     }
