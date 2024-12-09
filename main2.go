@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"btchunt/search"
+	"btchunt/search2"
 	"github.com/fatih/color"
 )
 
