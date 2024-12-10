@@ -1,37 +1,71 @@
-
 package main
 
 import (
-        "fmt"
-        "log"
-        "sync"
+    "fmt"
+    "log"
+    "strings"
+    "sync"
+    "time"
 
-        "btchunt/search"
+    "btchunt/search2"
+    "github.com/fatih/color"
 )
 
 const (
-        threadCount = 4   // N  mero de threads
-        blockSize   = 1000000 // N  mero m  ximo de tentativas por bloco
+    checkInterval  = 200000          // Checagem a cada 200k de chaves
+    numGoroutines  = 8              // Threads da CPU                                                                     
+    blockSize      = int64(10000)  // Tamanho do bloco de tentativas
 )
 
 func main() {
-        // Inicializa o controle de concorr  ncia
-        var wg sync.WaitGroup
-        wg.Add(threadCount)
+    // Carrega os ranges do arquivo
+    ranges, err := search.LoadRanges("ranges2.json")                                                                      
+    if err != nil {
+        log.Fatalf("Failed to load ranges: %v", err)
+    }
 
-        // Cria canais de controle para comunica    o
-        foundChan := make(chan bool, 1)
-        defer close(foundChan)
+ // Usando uma raw string para a arte ASCII
+    color.Cyan(`
+██████╗ ████████╗ ██████╗██╗  ██╗██╗   ██╗███╗   ██╗████████╗
+██╔══██╗╚══██╔══╝██╔════╝██║  ██║██║   ██║████╗  ██║╚══██╔══╝
+██████╔╝   ██║   ██║     ███████║██║   ██║██╔██╗ ██║   ██║   
+██╔══██╗   ██║   ██║     ██╔══██║██║   ██║██║╚██╗██║   ██║   
+██████╔╝   ██║   ╚██████╗██║  ██║╚██████╔╝██║ ╚████║   ██║   
+╚═════╝    ╚═╝    ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   
+`)
 
-        // Inicia as threads
-        for i := 0; i < threadCount; i++ {
-                go func(threadID int) {
-                        defer wg.Done()
-                        search.StartSearch(threadID, blockSize, foundChan)
-                }(i)
-        }
+    // Exibe informa    es iniciais
+    fmt.Println("Wallet a ser buscada:")
+    color.Green(ranges.Ranges[0].Status)
+    fmt.Println("Padrão da chave:")
+    color.Yellow(ranges.Ranges[0].Key)
 
-        // Aguarda at   que todas as threads concluam
-        wg.Wait()
-        fmt.Println("Busca conclu  da.")
+    pattern := ranges.Ranges[0].Key
+    wallets := strings.Split(ranges.Ranges[0].Status, ", ")
+
+    startTime := time.Now()
+    stopSignal := make(chan struct{})
+    var wg sync.WaitGroup
+    var keysChecked int64
+
+    // Cria um canal para distribuir as chaves geradas
+    keysChan := make(chan string, numGoroutines)
+
+    // Inicia as goroutines para busca
+    for i := 0; i < numGoroutines; i++ {
+        wg.Add(1)
+        go func(id int) {
+            defer wg.Done()
+            search.SearchKeys(wallets, keysChan, stopSignal, startTime, id, &keysChecked, checkInterval, blockSize)
+        }(i)
+    }
+
+    // Gera e envia as chaves para o canal
+    go func() {
+        search.GenerateAndSendKeys(pattern, keysChan, stopSignal, blockSize)
+        close(keysChan)
+    }()
+
+    // Aguarda todas as goroutines terminarem
+    wg.Wait()
 }
