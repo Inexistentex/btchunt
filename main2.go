@@ -1,19 +1,20 @@
 package main
 
 import (
-	"fmt"
-	"log"
-	"strings"
-	"sync"
-	"time"
+    "fmt"
+    "log"
+    "strings"
+    "sync"
+    "time"
 
-	"btchunt/search2"
-	"github.com/fatih/color"
+    "btchunt/search"
+    "github.com/fatih/color"
 )
 
 const (
-	checkInterval  = 200000 // Checagem a cada 200k de chaves
-	numGoroutines  = 4      // Threads da CPU
+    checkInterval  = 200000          // Checagem a cada 200k de chaves
+    numGoroutines  = 4              // Threads da CPU
+    blockSize      = int64(1000000)  // Tamanho do bloco de tentativas
 )
 
 func main() {
@@ -26,11 +27,11 @@ func main() {
     // Arte ASCII
     color.Cyan(`
 ██████╗ ████████╗ ██████╗██╗  ██╗██╗   ██╗███╗   ██╗████████╗
-██╔══██╗╚══██╔══╝██╔════╝██║  ██║██║   ██║████╗  ██║╚══██╔══╝
-██████╔╝   ██║   ██║     ███████║██║   ██║██╔██╗ ██║   ██║   
-██╔══██╗   ██║   ██║     ██╔══██║██║   ██║██║╚██╗██║   ██║   
-██████╔╝   ██║   ╚██████╗██║  ██║╚██████╔╝██║ ╚████║   ██║   
-╚═════╝    ╚═╝    ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   
+██╔══██╗╚══██╔══╝██╔════╝██║  ██║██║   ██║██║   ██║╚══██╔══╝
+██████╔╝   ██║   ██║     ███████║██║   ██║██║   ██║   ██║   
+██╔══██╗   ██║   ██║     ██╔══██║██║   ██║██║   ██║   ██║   
+██████╔╝   ██║   ╚██████╗██║  ██║╚██████╔╝██║   ██║   ██║   
+╚═════╝    ╚═╝    ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝   ╚═╝   ╚═╝   
 `)
 
     // Exibe informações iniciais
@@ -55,13 +56,13 @@ func main() {
         wg.Add(1)
         go func(id int) {
             defer wg.Done()
-            search.SearchKeys(wallets, keysChan, stopSignal, startTime, id, &keysChecked, checkInterval)
+            search.SearchKeys(wallets, keysChan, stopSignal, startTime, id, &keysChecked, checkInterval, blockSize)
         }(i)
     }
 
     // Gera e envia as chaves para o canal
     go func() {
-        search.GenerateAndSendKeys(pattern, keysChan, stopSignal)
+        search.GenerateAndSendKeys(pattern, keysChan, stopSignal, blockSize)
         close(keysChan)
     }()
 
