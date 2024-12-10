@@ -1,3 +1,4 @@
+
 package search
 
 import (
@@ -23,7 +24,7 @@ type Range struct {
     OriginalStatus string
 }
 
-// Ranges contém uma lista de Range
+// Ranges cont  m uma lista de Range
 type Ranges struct {
     Ranges []Range
 }
@@ -43,7 +44,7 @@ func LoadRanges(filename string) (*Ranges, error) {
         return nil, err
     }
 
-    // Processa os endereços
+    // Processa os endere  os
     for i := range ranges.Ranges {
         ranges.Ranges[i].OriginalStatus = ranges.Ranges[i].Status
         hash160 := wif.AddressToHash160(ranges.Ranges[i].Status)
@@ -53,7 +54,7 @@ func LoadRanges(filename string) (*Ranges, error) {
     return &ranges, nil
 }
 
-// Função para verificar se há 4 ou mais caracteres repetidos consecutivamente (exceto '0')
+// Fun    o para verificar se h   4 ou mais caracteres repetidos consecutivamente (exceto '0')
 func hasRepeatedCharacters(key string) bool {
     if len(key) < 7 {
         return false
@@ -73,22 +74,22 @@ func hasRepeatedCharacters(key string) bool {
     return false
 }
 
-// Função para gerar uma chave aleatória inicial baseada no padrão
+// Fun    o para gerar uma chave aleat  ria inicial baseada no padr  o
 func getRandomBlock(pattern string) string {
     chars := "0123456789abcdef"
     result := make([]byte, len(pattern))
-    
+
     for i, char := range pattern {
         if char == 'x' {
-            // Gera um caractere aleatório do conjunto hexadecimal
+            // Gera um caractere aleat  rio do conjunto hexadecimal
             randIndex := rand.Intn(len(chars))
             result[i] = chars[randIndex]
         } else {
-            // Mantém o caractere fixo do padrão
+            // Mant  m o caractere fixo do padr  o
             result[i] = byte(char)
         }
     }
-    
+
     return string(result)
 }
 
@@ -96,16 +97,16 @@ func getRandomBlock(pattern string) string {
 func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan struct{}, blockSize int64) {
     chars := "0123456789abcdef"
     blockCount := 0
-    
+
     for {
         baseKey := getRandomBlock(pattern)
         blockCount++
-        
+
         var attempts int64 = 0
         currentKey := []byte(baseKey)
         firstKeyInBlock := string(currentKey)
         var lastKeyInBlock string
-        
+
         for attempts < blockSize {
             select {
             case <-stopSignal:
@@ -116,7 +117,7 @@ func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan
                     attempts++
                     lastKeyInBlock = string(currentKey)
                 }
-                
+
                 incrementou := false
                 for i := len(currentKey) - 1; i >= 0; i-- {
                     if pattern[i] == 'x' {
@@ -130,18 +131,18 @@ func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan
                         }
                     }
                 }
-                
+
                 if !incrementou {
                     break
                 }
             }
         }
-        
+
         select {
         case <-stopSignal:
             return
         default:
-            fmt.Printf("\nBloco #%d - Primeira: %s Última: %s", 
+            fmt.Printf("\nBloco #%d - Primeira: %s  ^zltima: %s",
                 blockCount, firstKeyInBlock, lastKeyInBlock)
             continue
         }
@@ -149,7 +150,7 @@ func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan
 }
 
 // SearchKeys processa as chaves geradas
-func SearchKeys(wallets []string, keysChan <-chan string, stopSignal chan struct{}, startTime time.Time, id int, keysChecked *int64, checkInterval int64, blockSize int64) {
+func SearchKeys(wallets []string, keysChan <-chan string, stopSignal chan struct{}, startTime time.Time, id int, keysChecked *int64, checkInterval int6>
     for keyHex := range keysChan {
         select {
         case <-stopSignal:
@@ -157,7 +158,7 @@ func SearchKeys(wallets []string, keysChan <-chan string, stopSignal chan struct
         default:
             privKey := new(big.Int)
             privKey.SetString(keyHex, 16)
-            
+
             if atomic.AddInt64(keysChecked, 1)%checkInterval == 0 {
                 printProgress(startTime, keysChecked)
             }
@@ -178,7 +179,7 @@ func SearchKeys(wallets []string, keysChan <-chan string, stopSignal chan struct
     }
 }
 
-// contains verifica se um endereço está na lista
+// contains verifica se um endere  o est   na lista
 func contains(wallets []string, addressHash160Hex string) bool {
     for _, wallet := range wallets {
         if wallet == addressHash160Hex {
@@ -193,7 +194,7 @@ func saveFoundKeyDetails(privKey *big.Int, wifKey, address string) {
     fmt.Println("\n-------------------CHAVE ENCONTRADA!!!!-------------------")
     fmt.Printf("Private key: %064x\n", privKey)
     fmt.Printf("WIF: %s\n", wifKey)
-    fmt.Printf("Endereço: %s\n", address)
+    fmt.Printf("Endere  o: %s\n", address)
 
     file, err := os.OpenFile("found_keys.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
     if err != nil {
@@ -202,7 +203,7 @@ func saveFoundKeyDetails(privKey *big.Int, wifKey, address string) {
     }
     defer file.Close()
 
-    _, err = file.WriteString(fmt.Sprintf("\nPrivate key: %064x\nWIF: %s\nEndereço: %s\n", privKey, wifKey, address))
+    _, err = file.WriteString(fmt.Sprintf("\nPrivate key: %064x\nWIF: %s\nEndere  o: %s\n", privKey, wifKey, address))
     if err != nil {
         fmt.Printf("Erro ao escrever chave encontrada: %v\n", err)
     }
@@ -212,9 +213,9 @@ func saveFoundKeyDetails(privKey *big.Int, wifKey, address string) {
 func printProgress(startTime time.Time, keysChecked *int64) {
     elapsed := time.Since(startTime)
     keysPerSecond := float64(atomic.LoadInt64(keysChecked)) / elapsed.Seconds()
-    fmt.Printf("\rKeys Checked: %s  Time: %.2fs  Keys/s: %.2f", 
-        humanize.Comma(atomic.LoadInt64(keysChecked)), 
-        elapsed.Seconds(), 
+    fmt.Printf("\rKeys Checked: %s  Time: %.2fs  Keys/s: %.2f",
+        humanize.Comma(atomic.LoadInt64(keysChecked)),
+        elapsed.Seconds(),
         keysPerSecond)
 }
 
