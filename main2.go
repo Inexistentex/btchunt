@@ -14,7 +14,7 @@ import (
 const (
     checkInterval  = 200000          // Checagem a cada 200k de chaves
     numGoroutines  = 8              // Threads da CPU                                                                     
-    blockSize      = int64(10000)  // Tamanho do bloco de tentativas
+    blockSize      = int64(1000000)  // Tamanho do bloco de tentativas
 )
 
 func main() {
