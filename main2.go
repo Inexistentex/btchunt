@@ -12,9 +12,10 @@ import (
 )
 
 const (
-    checkInterval  = 200000          // Checagem a cada 200k de chaves
+    checkInterval  = 1000000          // Checagem a cada 200k de chaves
     numGoroutines  = 8              // Threads da CPU                                                                     
-    blockSize      = int64(1000000)  // Tamanho do bloco de tentativas
+    blockSize      = int64(500000)  // Tamanho do bloco de tentativas
+    batchSize      = 500000        // Tamanho do lote para processamento em batch
 )
 
 func main() {
@@ -24,7 +25,7 @@ func main() {
         log.Fatalf("Failed to load ranges: %v", err)
     }
 
- // Usando uma raw string para a arte ASCII
+    // Usando uma raw string para a arte ASCII
     color.Cyan(`
 ██████╗ ████████╗ ██████╗██╗  ██╗██╗   ██╗███╗   ██╗████████╗
 ██╔══██╗╚══██╔══╝██╔════╝██║  ██║██║   ██║████╗  ██║╚══██╔══╝
@@ -34,7 +35,7 @@ func main() {
 ╚═════╝    ╚═╝    ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   
 `)
 
-    // Exibe informa    es iniciais
+    // Exibe informações iniciais
     fmt.Println("Wallet a ser buscada:")
     color.Green(ranges.Ranges[0].Status)
     fmt.Println("Padrão da chave:")
@@ -56,7 +57,7 @@ func main() {
         wg.Add(1)
         go func(id int) {
             defer wg.Done()
-            search.SearchKeys(wallets, keysChan, stopSignal, startTime, id, &keysChecked, checkInterval, blockSize)
+            search.SearchInBlockBatch(wallets, keysChan, stopSignal, startTime, id, &keysChecked, checkInterval, batchSize)
         }(i)
     }
 
