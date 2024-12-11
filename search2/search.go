@@ -80,11 +80,9 @@ func getRandomBlock(pattern string) string {
     
     for i, char := range pattern {
         if char == 'x' {
-            // Gera um caractere aleatório do conjunto hexadecimal
             randIndex := rand.Intn(len(chars))
             result[i] = chars[randIndex]
         } else {
-            // Mantém o caractere fixo do padrão
             result[i] = byte(char)
         }
     }
@@ -148,9 +146,32 @@ func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan
     }
 }
 
-// SearchKeys processa as chaves geradas
-func SearchKeys(wallets []string, keysChan <-chan string, stopSignal chan struct{}, startTime time.Time, id int, keysChecked *int64, checkInterval int64, blockSize int64) {
+// SearchInBlockBatch processa as chaves em lotes
+func SearchInBlockBatch(wallets []string, keysChan <-chan string, stopSignal chan struct{}, startTime time.Time, id int, keysChecked *int64, checkInterval int64, batchSize int) {
+    var keyBatch []string
+    
     for keyHex := range keysChan {
+        select {
+        case <-stopSignal:
+            return
+        default:
+            keyBatch = append(keyBatch, keyHex)
+            
+            if len(keyBatch) == batchSize {
+                processBatch(keyBatch, wallets, stopSignal, keysChecked, checkInterval, startTime)
+                keyBatch = keyBatch[:0]
+            }
+        }
+    }
+    
+    if len(keyBatch) > 0 {
+        processBatch(keyBatch, wallets, stopSignal, keysChecked, checkInterval, startTime)
+    }
+}
+
+// processBatch processa um lote de chaves
+func processBatch(keyBatch []string, wallets []string, stopSignal chan struct{}, keysChecked *int64, checkInterval int64, startTime time.Time) {
+    for _, keyHex := range keyBatch {
         select {
         case <-stopSignal:
             return
