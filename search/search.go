@@ -1,12 +1,13 @@
 package search
 
 import (
-	"encoding/json"
+	"encoding/binary"
+        "encoding/json"
 	"fmt"
 	"math/big"
 	"os"
 	"strings"
-
+        "btchunt/xoshiro"
 	"sync/atomic"
 	"time"
 	"math/rand"
@@ -114,44 +115,105 @@ func LoadRanges(filename string) (*Ranges, error) {
     return &ranges, nil
 }
 
-// GetRandomBlock gera um bloco de chaves privadas aleatórias dentro do intervalo fornecido
-func GetRandomBlock(minPrivKey, maxPrivKey *big.Int, blockSize int64) *big.Int {
-	rangeSize := new(big.Int).Sub(maxPrivKey, minPrivKey)
-	block := new(big.Int).Rand(rand.New(rand.NewSource(time.Now().UnixNano())), rangeSize)
+// GetRandomBlock modificado para usar xoshiro256
+func GetRandomBlock(minPrivKey, maxPrivKey *big.Int, blockSize int64, fullyRandom bool) *big.Int {
+    // Cria uma nova fonte xoshiro256
+    var seed [32]byte
+    rand.Read(seed[:]) // Gera seed aleatória
+    source := &xoshiro256.Source{}
+    source.Seed(seed)
 
-	// Ajusta o bloco para estar dentro do intervalo [minPrivKey, maxPrivKey - blockSize]
-	block.Add(block, minPrivKey)
-	blockEnd := new(big.Int).Set(block)
-	blockEnd.Add(blockEnd, big.NewInt(blockSize))
+    if fullyRandom {
+        // Modo 100% aleatório
+        diff := new(big.Int).Sub(maxPrivKey, minPrivKey)
+        // Converte a saída do xoshiro256 para big.Int
+        randomBits := make([]byte, 32)
+        binary.BigEndian.PutUint64(randomBits[0:8], source.Uint64())
+        binary.BigEndian.PutUint64(randomBits[8:16], source.Uint64())
+        binary.BigEndian.PutUint64(randomBits[16:24], source.Uint64())
+        binary.BigEndian.PutUint64(randomBits[24:32], source.Uint64())
+        
+        randomInt := new(big.Int).SetBytes(randomBits)
+        randomInt.Mod(randomInt, diff)
+        return randomInt.Add(randomInt, minPrivKey)
+    }
 
-	if blockEnd.Cmp(maxPrivKey) > 0 {
-		// Se o bloco ultrapassar o maxPrivKey, ajusta para estar dentro do intervalo
-		block.Sub(maxPrivKey, big.NewInt(blockSize))
-	}
+    // Modo original (bloco aleatório + sequencial)
+    rangeSize := new(big.Int).Sub(maxPrivKey, minPrivKey)
+    randomBits := make([]byte, 32)
+    binary.BigEndian.PutUint64(randomBits[0:8], source.Uint64())
+    binary.BigEndian.PutUint64(randomBits[8:16], source.Uint64())
+    binary.BigEndian.PutUint64(randomBits[16:24], source.Uint64())
+    binary.BigEndian.PutUint64(randomBits[24:32], source.Uint64())
+    
+    block := new(big.Int).SetBytes(randomBits)
+    block.Mod(block, rangeSize)
+    block.Add(block, minPrivKey)
+    
+    blockEnd := new(big.Int).Set(block)
+    blockEnd.Add(blockEnd, big.NewInt(blockSize))
 
-	return block
+    if blockEnd.Cmp(maxPrivKey) > 0 {
+        block.Sub(maxPrivKey, big.NewInt(blockSize))
+    }
+
+    return block
 }
 
-// SearchInBlockBatch busca chaves privadas em lotes dentro de um bloco
+// SearchInBlockBatch modificada para usar xoshiro256 no modo totalmente aleatório
 func SearchInBlockBatch(wallets []string, blockSize int64, minPrivKey, maxPrivKey *big.Int, stopSignal chan struct{}, startTime time.Time, id int, keysChecked *int64, checkInterval int64, taskChan chan *big.Int, batchSize int) {
-	for block := range taskChan {
-		privKey := new(big.Int)
-		var privKeyBatch []*big.Int
-		for i := int64(0); i < blockSize; i++ {
-			privKey.Add(block, big.NewInt(i))
-			privKeyBatch = append(privKeyBatch, new(big.Int).Set(privKey))
+    // Determina se esta thread deve usar modo totalmente aleatório baseado no ID
+    fullyRandom := id%2 == 0
+    
+    // Inicializa xoshiro256 para esta thread
+    var seed [32]byte
+    rand.Read(seed[:])
+    source := &xoshiro256.Source{}
+    source.Seed(seed)
 
-			// Processa o lote ao atingir o tamanho do batch
-			if len(privKeyBatch) == batchSize {
-				verifyBatch(privKeyBatch, wallets, stopSignal, keysChecked, checkInterval, startTime)
-				privKeyBatch = privKeyBatch[:0] // Limpa o batch
-			}
-		}
-		// Processa o restante do lote
-		if len(privKeyBatch) > 0 {
-			verifyBatch(privKeyBatch, wallets, stopSignal, keysChecked, checkInterval, startTime)
-		}
-	}
+    for block := range taskChan {
+        privKey := new(big.Int)
+        var privKeyBatch []*big.Int
+
+        if fullyRandom {
+            // Modo totalmente aleatório usando xoshiro256
+            for i := int64(0); i < blockSize; i++ {
+                randomBits := make([]byte, 32)
+                binary.BigEndian.PutUint64(randomBits[0:8], source.Uint64())
+                binary.BigEndian.PutUint64(randomBits[8:16], source.Uint64())
+                binary.BigEndian.PutUint64(randomBits[16:24], source.Uint64())
+                binary.BigEndian.PutUint64(randomBits[24:32], source.Uint64())
+                
+                randomKey := new(big.Int).SetBytes(randomBits)
+                diff := new(big.Int).Sub(maxPrivKey, minPrivKey)
+                randomKey.Mod(randomKey, diff)
+                randomKey.Add(randomKey, minPrivKey)
+                
+                privKeyBatch = append(privKeyBatch, new(big.Int).Set(randomKey))
+
+                if len(privKeyBatch) == batchSize {
+                    verifyBatch(privKeyBatch, wallets, stopSignal, keysChecked, checkInterval, startTime)
+                    privKeyBatch = privKeyBatch[:0]
+                }
+            }
+        } else {
+            // Modo original (aleatório + sequencial)
+            for i := int64(0); i < blockSize; i++ {
+                privKey.Add(block, big.NewInt(i))
+                privKeyBatch = append(privKeyBatch, new(big.Int).Set(privKey))
+
+                if len(privKeyBatch) == batchSize {
+                    verifyBatch(privKeyBatch, wallets, stopSignal, keysChecked, checkInterval, startTime)
+                    privKeyBatch = privKeyBatch[:0]
+                }
+            }
+        }
+
+        // Processa o restante do lote
+        if len(privKeyBatch) > 0 {
+            verifyBatch(privKeyBatch, wallets, stopSignal, keysChecked, checkInterval, startTime)
+        }
+    }
 }
 
 // Função para verificar se há 4 ou mais caracteres repetidos consecutivamente (exceto '0')
