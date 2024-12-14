@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"os"
 	"strings"
-        "btchunt/xoshiro"
 	"sync/atomic"
 	"time"
 	"math/rand"
@@ -15,6 +14,38 @@ import (
 	"btchunt/wif" // Importando o pacote wif
         "github.com/fatih/color"
 )
+
+// Estrutura global para o gerador xoshiro256
+type Xoshiro256 struct {
+    state [4]uint64
+}
+
+func NewXoshiro256() *Xoshiro256 {
+    x := &Xoshiro256{}
+    seed := make([]byte, 32)
+    rand.Read(seed) // seed inicial única
+    x.state[0] = binary.BigEndian.Uint64(seed[0:8])
+    x.state[1] = binary.BigEndian.Uint64(seed[8:16])
+    x.state[2] = binary.BigEndian.Uint64(seed[16:24])
+    x.state[3] = binary.BigEndian.Uint64(seed[24:32])
+    return x
+}
+
+func (x *Xoshiro256) Next() uint64 {
+    result := rotl(x.state[1]*5, 7) * 9
+    t := x.state[1] << 17
+    x.state[2] ^= x.state[0]
+    x.state[3] ^= x.state[1]
+    x.state[1] ^= x.state[2]
+    x.state[0] ^= x.state[3]
+    x.state[2] ^= t
+    x.state[3] = rotl(x.state[3], 45)
+    return result
+}
+
+func rotl(x uint64, k int) uint64 {
+    return (x << k) | (x >> (64 - k))
+}
 
 // IntervalJumper estrutura para gerenciar o salto entre intervalos
 type IntervalJumper struct {
@@ -115,23 +146,18 @@ func LoadRanges(filename string) (*Ranges, error) {
     return &ranges, nil
 }
 
-// GetRandomBlock modificado para usar xoshiro256
+// GetRandomBlock modificado para usar apenas xoshiro256
 func GetRandomBlock(minPrivKey, maxPrivKey *big.Int, blockSize int64, fullyRandom bool) *big.Int {
-    // Cria uma nova fonte xoshiro256
-    var seed [32]byte
-    rand.Read(seed[:]) // Gera seed aleatória
-    source := &xoshiro256.Source{}
-    source.Seed(seed)
-
+    xoshiro := NewXoshiro256()
+    
     if fullyRandom {
         // Modo 100% aleatório
         diff := new(big.Int).Sub(maxPrivKey, minPrivKey)
-        // Converte a saída do xoshiro256 para big.Int
         randomBits := make([]byte, 32)
-        binary.BigEndian.PutUint64(randomBits[0:8], source.Uint64())
-        binary.BigEndian.PutUint64(randomBits[8:16], source.Uint64())
-        binary.BigEndian.PutUint64(randomBits[16:24], source.Uint64())
-        binary.BigEndian.PutUint64(randomBits[24:32], source.Uint64())
+        binary.BigEndian.PutUint64(randomBits[0:8], xoshiro.Next())
+        binary.BigEndian.PutUint64(randomBits[8:16], xoshiro.Next())
+        binary.BigEndian.PutUint64(randomBits[16:24], xoshiro.Next())
+        binary.BigEndian.PutUint64(randomBits[24:32], xoshiro.Next())
         
         randomInt := new(big.Int).SetBytes(randomBits)
         randomInt.Mod(randomInt, diff)
@@ -141,10 +167,10 @@ func GetRandomBlock(minPrivKey, maxPrivKey *big.Int, blockSize int64, fullyRando
     // Modo original (bloco aleatório + sequencial)
     rangeSize := new(big.Int).Sub(maxPrivKey, minPrivKey)
     randomBits := make([]byte, 32)
-    binary.BigEndian.PutUint64(randomBits[0:8], source.Uint64())
-    binary.BigEndian.PutUint64(randomBits[8:16], source.Uint64())
-    binary.BigEndian.PutUint64(randomBits[16:24], source.Uint64())
-    binary.BigEndian.PutUint64(randomBits[24:32], source.Uint64())
+    binary.BigEndian.PutUint64(randomBits[0:8], xoshiro.Next())
+    binary.BigEndian.PutUint64(randomBits[8:16], xoshiro.Next())
+    binary.BigEndian.PutUint64(randomBits[16:24], xoshiro.Next())
+    binary.BigEndian.PutUint64(randomBits[24:32], xoshiro.Next())
     
     block := new(big.Int).SetBytes(randomBits)
     block.Mod(block, rangeSize)
@@ -160,29 +186,23 @@ func GetRandomBlock(minPrivKey, maxPrivKey *big.Int, blockSize int64, fullyRando
     return block
 }
 
-// SearchInBlockBatch modificada para usar xoshiro256 no modo totalmente aleatório
+// SearchInBlockBatch modificada para usar xoshiro256
 func SearchInBlockBatch(wallets []string, blockSize int64, minPrivKey, maxPrivKey *big.Int, stopSignal chan struct{}, startTime time.Time, id int, keysChecked *int64, checkInterval int64, taskChan chan *big.Int, batchSize int) {
-    // Determina se esta thread deve usar modo totalmente aleatório baseado no ID
     fullyRandom := id%2 == 0
-    
-    // Inicializa xoshiro256 para esta thread
-    var seed [32]byte
-    rand.Read(seed[:])
-    source := &xoshiro256.Source{}
-    source.Seed(seed)
+    xoshiro := NewXoshiro256()
 
     for block := range taskChan {
         privKey := new(big.Int)
         var privKeyBatch []*big.Int
 
         if fullyRandom {
-            // Modo totalmente aleatório usando xoshiro256
+            // Modo totalmente aleatório
             for i := int64(0); i < blockSize; i++ {
                 randomBits := make([]byte, 32)
-                binary.BigEndian.PutUint64(randomBits[0:8], source.Uint64())
-                binary.BigEndian.PutUint64(randomBits[8:16], source.Uint64())
-                binary.BigEndian.PutUint64(randomBits[16:24], source.Uint64())
-                binary.BigEndian.PutUint64(randomBits[24:32], source.Uint64())
+                binary.BigEndian.PutUint64(randomBits[0:8], xoshiro.Next())
+                binary.BigEndian.PutUint64(randomBits[8:16], xoshiro.Next())
+                binary.BigEndian.PutUint64(randomBits[16:24], xoshiro.Next())
+                binary.BigEndian.PutUint64(randomBits[24:32], xoshiro.Next())
                 
                 randomKey := new(big.Int).SetBytes(randomBits)
                 diff := new(big.Int).Sub(maxPrivKey, minPrivKey)
@@ -209,33 +229,12 @@ func SearchInBlockBatch(wallets []string, blockSize int64, minPrivKey, maxPrivKe
             }
         }
 
-        // Processa o restante do lote
         if len(privKeyBatch) > 0 {
             verifyBatch(privKeyBatch, wallets, stopSignal, keysChecked, checkInterval, startTime)
         }
     }
 }
 
-// Função para verificar se há 4 ou mais caracteres repetidos consecutivamente (exceto '0')
-func hasRepeatedCharacters(key string) bool {
-    if len(key) < 4 {
-        return false // Se a chave for menor que 4 caracteres, não pode ter repetição
-    }
-
-    repeatCount := 1
-    for i := 1; i < len(key); i++ {
-        if key[i] == key[i-1] && key[i] != '0' {
-            repeatCount++
-            if repeatCount == 4 {
-               // fmt.Printf("Chave pulada devido à repetição: %s\n", key)
-                return true // Retorna imediatamente ao encontrar 4 caracteres consecutivos
-            }
-        } else {
-            repeatCount = 1 // Reinicia o contador se os caracteres forem diferentes
-        }
-    }
-    return false
-}
 
 // verifyBatch verifica um lote de chaves de uma só vez
 func verifyBatch(privKeyBatch []*big.Int, wallets []string, stopSignal chan struct{}, keysChecked *int64, checkInterval int64, startTime time.Time) {
@@ -250,21 +249,12 @@ func verifyBatch(privKeyBatch []*big.Int, wallets []string, stopSignal chan stru
 			printProgress(startTime, keysChecked)
 		}
 		
-		// Converte a chave para string hexadecimal e verifica se contém caracteres repetidos
-		privKeyHex := fmt.Sprintf("%064x", privKey) // Converte para hexadecimal
-		if hasRepeatedCharacters(privKeyHex) {
-			continue // Ignora se houver 4 ou mais caracteres repetidos
-		}
 
 		// Se não houver repetição de caracteres, gera a chave pública
 		pubKeys[i] = wif.GeneratePublicKey(privKeyBytes) // Usando função do pacote wif
 	}
 
 	for i, pubKey := range pubKeys {
-		// Se a chave pública for nula (foi ignorada devido à repetição de caracteres), continue
-		if pubKey == nil {
-			continue
-		}
 
 		addressHash160 := wif.Hash160(pubKey) // Usando função do pacote wif
 		addressHash160Hex := fmt.Sprintf("%x", addressHash160)
