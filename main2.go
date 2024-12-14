@@ -7,20 +7,20 @@ import (
     "sync"
     "time"
 
-    "btchunt/search2"
+    "btchunt/search2" // Corrigido para usar 'search'
     "github.com/fatih/color"
 )
 
 const (
-    checkInterval  = 500000          // Checagem a cada 200k de chaves
-    numGoroutines  = 4              // Threads da CPU                                                                     
-    blockSize      = int64(10000)  // Tamanho do bloco de tentativas
-    batchSize      = 100000        // Tamanho do lote para processamento em batch
+    checkInterval = 500000         // Checagem a cada 200k de chaves
+    numGoroutines = 4              // Threads da CPU                                                                     
+    blockSize     = int64(100000)  // Tamanho do bloco de tentativas
+    batchSize     = 100000         // Tamanho do lote para processamento em batch
 )
 
 func main() {
     // Carrega os ranges do arquivo
-    ranges, err := search.LoadRanges("ranges2.json")                                                                      
+    ranges, err := search.LoadRanges("ranges2.json")
     if err != nil {
         log.Fatalf("Failed to load ranges: %v", err)
     }
@@ -63,7 +63,7 @@ func main() {
 
     // Gera e envia as chaves para o canal
     go func() {
-        search.GenerateAndSendKeys(pattern, keysChan, stopSignal, blockSize)
+        search.GenerateAndSendKeys(pattern, keysChan, stopSignal, blockSize, numGoroutines)
         close(keysChan)
     }()
 
