@@ -101,9 +101,6 @@ func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan
 
         var attempts int64 = 0
         currentKey := []byte(baseKey)
-        firstKeyInBlock := string(currentKey)
-        var lastKeyInBlock string
-
         for attempts < blockSize {
             select {
             case <-stopSignal:
@@ -112,8 +109,7 @@ func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan
                 if !hasRepeatedCharacters(string(currentKey)) {
                     keysChan <- string(currentKey)
                     attempts++
-                    lastKeyInBlock = string(currentKey)
-                }
+                                    }
 
                 incrementou := false
                 for i := len(currentKey) - 1; i >= 0; i-- {
@@ -139,8 +135,6 @@ func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan
         case <-stopSignal:
             return
         default:
-            fmt.Printf("\nBloco #%d - Primeira: %s Última: %s",
-                blockCount, firstKeyInBlock, lastKeyInBlock)
             continue
         }
     }
