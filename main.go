@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	checkInterval  = 500000 // Checagem a cada X de chaves
-	jumpInterval   = 3600 // Tempo em segundos para ver0ificar um intervalo
-	numGoroutines  = 4 // Threads da CPU
+	checkInterval  = 500000 // Checagem a cada 200k de chaves
+	jumpInterval   = 60 // Tempo em segundos para ver0ificar um intervalo
+	numGoroutines  = 8 // Threads da CPU
 	blockSize      = int64(10000) // Tamanho dos blocos
 	batchSize      = 100000 // Tamanho do lote para verificação
 )
@@ -38,6 +38,7 @@ func main() {
 ██╔══██╗   ██║   ██║     ██╔══██║██║   ██║██║╚██╗██║   ██║   
 ██████╔╝   ██║   ╚██████╗██║  ██║╚██████╔╝██║ ╚████║   ██║   
 ╚═════╝    ╚═╝    ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   
+v1.7
 `)
 
     var rangeNumber int
