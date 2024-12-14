@@ -9,7 +9,7 @@ import (
     "strings"
     "sync/atomic"
     "time"
-
+    "sync"
     "btchunt/wif"
     "github.com/dustin/go-humanize"
 )
@@ -90,60 +90,55 @@ func getRandomBlock(pattern string) string {
     return string(result)
 }
 
-// GenerateAndSendKeys gera e envia as chaves para o canal
-func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan struct{}, blockSize int64) {
+func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan struct{}, blockSize int64, numGoroutines int) {
     chars := "0123456789abcdef"
-    blockCount := 0
-    
-    for {
-        baseKey := getRandomBlock(pattern)
-        blockCount++
-        
-        var attempts int64 = 0
-        currentKey := []byte(baseKey)
-        firstKeyInBlock := string(currentKey)
-        var lastKeyInBlock string
-        
-        for attempts < blockSize {
-            select {
-            case <-stopSignal:
-                return
-            default:
-                if !hasRepeatedCharacters(string(currentKey)) {
-                    keysChan <- string(currentKey)
-                    attempts++
-                    lastKeyInBlock = string(currentKey)
-                }
-                
-                incrementou := false
-                for i := len(currentKey) - 1; i >= 0; i-- {
-                    if pattern[i] == 'x' {
-                        currentIndex := strings.IndexByte(chars, currentKey[i])
-                        if currentIndex < len(chars)-1 {
-                            currentKey[i] = chars[currentIndex+1]
-                            incrementou = true
+
+    var wg sync.WaitGroup
+
+    for w := 0; w < numGoroutines; w++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for {
+                select {
+                case <-stopSignal:
+                    return
+                default:
+                    baseKey := getRandomBlock(pattern)
+                    currentKey := []byte(baseKey)
+
+                    for attempts := int64(0); attempts < blockSize; {
+                        if !hasRepeatedCharacters(string(currentKey)) {
+                            keysChan <- string(currentKey)
+                            attempts++
+                        }
+
+                        if !incrementKey(currentKey, pattern, chars) {
                             break
-                        } else {
-                            currentKey[i] = '0'
                         }
                     }
                 }
-                
-                if !incrementou {
-                    break
-                }
+            }
+        }()
+    }
+
+    wg.Wait()
+}
+
+// Incrementa a chave com aritmética em vez de loops excessivos
+func incrementKey(currentKey []byte, pattern string, chars string) bool {
+    for i := len(currentKey) - 1; i >= 0; i-- {
+        if pattern[i] == 'x' {
+            currentIndex := strings.IndexByte(chars, currentKey[i])
+            if currentIndex < len(chars)-1 {
+                currentKey[i] = chars[currentIndex+1]
+                return true
+            } else {
+                currentKey[i] = '0'
             }
         }
-        
-        select {
-        case <-stopSignal:
-            return
-        default:
-            fmt.Printf("\nBloco #%d - Primeira: %s Última: %s", 
-                blockCount, firstKeyInBlock, lastKeyInBlock)
-            continue
-        }
     }
+    return false
 }
 
 // SearchInBlockBatch processa as chaves em lotes
