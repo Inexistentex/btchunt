@@ -12,10 +12,10 @@ import (
 )
 
 const (
-    checkInterval  = 500000          // Checagem a cada 200k de chaves
-    numGoroutines  = 4              // Threads da CPU                                                                     
-    blockSize      = int64(10000)  // Tamanho do bloco de tentativas
-    batchSize      = 100000        // Tamanho do lote para processamento em batch
+    checkInterval  = 1000000          // Checagem a cada 200k de chaves
+    numGoroutines  = 8              // Threads da CPU                                                                     
+    blockSize      = int64(500000)  // Tamanho do bloco de tentativas
+    batchSize      = 500000        // Tamanho do lote para processamento em batch
 )
 
 func main() {
