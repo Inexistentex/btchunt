@@ -103,7 +103,7 @@ func main() {
 			wg.Wait()
 			return
 		default:
-			block := search.GetRandomBlock(privKeyInt, maxPrivKeyInt, blockSize)
+			block := search.GetRandomBlock(privKeyInt, maxPrivKeyInt, blockSize, false)
 			taskChan <- block
 		}
 	}
