@@ -4,13 +4,14 @@ import (
     "encoding/json"
     "fmt"
     "math/big"
+    "math/rand"
     "os"
     "strings"
     "sync/atomic"
     "time"
-    "math/rand"
-    "github.com/dustin/go-humanize"
+
     "btchunt/wif"
+    "github.com/dustin/go-humanize"
 )
 
 // Range representa um intervalo de chaves privadas
@@ -52,7 +53,7 @@ func LoadRanges(filename string) (*Ranges, error) {
     return &ranges, nil
 }
 
-// Função para verificar se há 4 ou mais caracteres repetidos consecutivamente 
+// Função para verificar se há 4 ou mais caracteres repetidos consecutivamente (exceto '0')
 func hasRepeatedCharacters(key string) bool {
     if len(key) < 7 {
         return false
@@ -60,7 +61,7 @@ func hasRepeatedCharacters(key string) bool {
 
     repeatCount := 1
     for i := 1; i < len(key); i++ {
-          if key[i] == key[i-1] {
+        if key[i] == key[i-1] && key[i] != '0' {
             repeatCount++
             if repeatCount == 4 {
                 return true
@@ -72,38 +73,37 @@ func hasRepeatedCharacters(key string) bool {
     return false
 }
 
-func getRandomBlock(pattern string, rng *rand.Rand) string {
+// Função para gerar uma chave aleatória inicial baseada no padrão
+func getRandomBlock(pattern string) string {
     chars := "0123456789abcdef"
     result := make([]byte, len(pattern))
-
+    
     for i, char := range pattern {
         if char == 'x' {
-            randIndex := int(rng.Int63() % int64(len(chars))) // Usa o gerador Xoshiro
+            randIndex := rand.Intn(len(chars))
             result[i] = chars[randIndex]
         } else {
             result[i] = byte(char)
         }
     }
+    
     return string(result)
 }
 
+// GenerateAndSendKeys gera e envia as chaves para o canal
 func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan struct{}, blockSize int64) {
     chars := "0123456789abcdef"
     blockCount := 0
-
-    // Criação do gerador de números aleatórios
-    rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-
+    
     for {
-        // Chamada corrigida para incluir o gerador rng
-        baseKey := getRandomBlock(pattern, rng)
+        baseKey := getRandomBlock(pattern)
         blockCount++
-
+        
         var attempts int64 = 0
         currentKey := []byte(baseKey)
         firstKeyInBlock := string(currentKey)
         var lastKeyInBlock string
-
+        
         for attempts < blockSize {
             select {
             case <-stopSignal:
@@ -114,7 +114,7 @@ func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan
                     attempts++
                     lastKeyInBlock = string(currentKey)
                 }
-
+                
                 incrementou := false
                 for i := len(currentKey) - 1; i >= 0; i-- {
                     if pattern[i] == 'x' {
@@ -128,18 +128,18 @@ func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan
                         }
                     }
                 }
-
+                
                 if !incrementou {
                     break
                 }
             }
         }
-
+        
         select {
         case <-stopSignal:
             return
         default:
-            fmt.Printf("\nBloco #%d - Primeira: %s Última: %s",
+            fmt.Printf("\nBloco #%d - Primeira: %s Última: %s", 
                 blockCount, firstKeyInBlock, lastKeyInBlock)
             continue
         }
@@ -149,21 +149,21 @@ func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan
 // SearchInBlockBatch processa as chaves em lotes
 func SearchInBlockBatch(wallets []string, keysChan <-chan string, stopSignal chan struct{}, startTime time.Time, id int, keysChecked *int64, checkInterval int64, batchSize int) {
     var keyBatch []string
-
+    
     for keyHex := range keysChan {
         select {
         case <-stopSignal:
             return
         default:
             keyBatch = append(keyBatch, keyHex)
-
+            
             if len(keyBatch) == batchSize {
                 processBatch(keyBatch, wallets, stopSignal, keysChecked, checkInterval, startTime)
                 keyBatch = keyBatch[:0]
             }
         }
     }
-
+    
     if len(keyBatch) > 0 {
         processBatch(keyBatch, wallets, stopSignal, keysChecked, checkInterval, startTime)
     }
@@ -178,7 +178,7 @@ func processBatch(keyBatch []string, wallets []string, stopSignal chan struct{},
         default:
             privKey := new(big.Int)
             privKey.SetString(keyHex, 16)
-
+            
             if atomic.AddInt64(keysChecked, 1)%checkInterval == 0 {
                 printProgress(startTime, keysChecked)
             }
@@ -233,9 +233,9 @@ func saveFoundKeyDetails(privKey *big.Int, wifKey, address string) {
 func printProgress(startTime time.Time, keysChecked *int64) {
     elapsed := time.Since(startTime)
     keysPerSecond := float64(atomic.LoadInt64(keysChecked)) / elapsed.Seconds()
-    fmt.Printf("\rKeys Checked: %s  Time: %.2fs  Keys/s: %.2f",
-        humanize.Comma(atomic.LoadInt64(keysChecked)),
-        elapsed.Seconds(),
+    fmt.Printf("\rKeys Checked: %s  Time: %.2fs  Keys/s: %.2f", 
+        humanize.Comma(atomic.LoadInt64(keysChecked)), 
+        elapsed.Seconds(), 
         keysPerSecond)
 }
 
