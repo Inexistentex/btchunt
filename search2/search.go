@@ -168,34 +168,58 @@ func SearchInBlockBatch(wallets []string, keysChan <-chan string, stopSignal cha
 	}
 }
 
+// checkRepeatedChars verifica se a chave possui 3 ou mais caracteres consecutivos repetidos
+func checkRepeatedChars(key string) bool {
+    count := 1
+    for i := 1; i < len(key); i++ {
+        if key[i] == key[i-1] {
+            count++
+            if count >= 3 {
+                return true
+            }
+        } else {
+            count = 1
+        }
+    }
+    return false
+}
+
+
+
 // processBatchOptimized processa um lote de chaves
 func processBatchOptimized(keyBatch []string, walletMap map[string]struct{}, stopSignal chan struct{}, keysChecked *int64, checkInterval int64, startTime time.Time) {
-	for _, keyHex := range keyBatch {
-		select {
-		case <-stopSignal:
-			return
-		default:
-			privKey := new(big.Int)
-			privKey.SetString(keyHex, 16)
+    for _, keyHex := range keyBatch {
+        // Incrementa o contador antes de qualquer filtro ou processamento
+        if atomic.AddInt64(keysChecked, 1)%checkInterval == 0 {
+            printProgress(startTime, keysChecked)
+        }
 
-			if atomic.AddInt64(keysChecked, 1)%checkInterval == 0 {
-				printProgress(startTime, keysChecked)
-			}
+        // Pula chaves com 3 ou mais caracteres consecutivos repetidos
+        if checkRepeatedChars(keyHex) {
+            continue
+        }
 
-			privKeyBytes := privKey.FillBytes(make([]byte, 32))
-			pubKey := wif.GeneratePublicKey(privKeyBytes)
-			addressHash160 := wif.Hash160(pubKey)
-			addressHash160Hex := fmt.Sprintf("%x", addressHash160)
+        select {
+        case <-stopSignal:
+            return
+        default:
+            privKey := new(big.Int)
+            privKey.SetString(keyHex, 16)
 
-			if _, exists := walletMap[addressHash160Hex]; exists {
-				wifKey := wif.PrivateKeyToWIF(privKey)
-				address := wif.PublicKeyToAddress(pubKey)
-				saveFoundKeyDetails(privKey, wifKey, address)
-				close(stopSignal)
-				return
-			}
-		}
-	}
+            privKeyBytes := privKey.FillBytes(make([]byte, 32))
+            pubKey := wif.GeneratePublicKey(privKeyBytes)
+            addressHash160 := wif.Hash160(pubKey)
+            addressHash160Hex := fmt.Sprintf("%x", addressHash160)
+
+            if _, exists := walletMap[addressHash160Hex]; exists {
+                wifKey := wif.PrivateKeyToWIF(privKey)
+                address := wif.PublicKeyToAddress(pubKey)
+                saveFoundKeyDetails(privKey, wifKey, address)
+                close(stopSignal)
+                return
+            }
+        }
+    }
 }
 
 // saveFoundKeyDetails salva os detalhes da chave encontrada
