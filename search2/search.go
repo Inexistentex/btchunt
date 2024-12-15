@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"math/big"
         "math/rand"
-
 	"os"
 	"sync"
 	"sync/atomic"
 	"time"
-
+        "strings"
 	"btchunt/wif"
 	"github.com/dustin/go-humanize"
 )
@@ -31,27 +30,40 @@ type Ranges struct {
 
 // LoadRanges carrega os intervalos do arquivo JSON
 func LoadRanges(filename string) (*Ranges, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
+    file, err := os.Open(filename)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
 
-	var ranges Ranges
-	decoder := json.NewDecoder(file)
-	err = decoder.Decode(&ranges)
-	if err != nil {
-		return nil, err
-	}
+    var ranges Ranges
+    decoder := json.NewDecoder(file)
+    err = decoder.Decode(&ranges)
+    if err != nil {
+        return nil, err
+    }
 
-	// Processa os endereços
-	for i := range ranges.Ranges {
-		ranges.Ranges[i].OriginalStatus = ranges.Ranges[i].Status
-		hash160 := wif.AddressToHash160(ranges.Ranges[i].Status)
-		ranges.Ranges[i].Status = fmt.Sprintf("%x", hash160)
-	}
+    // Adiciona um campo para armazenar os endereços originais
+    for i := range ranges.Ranges {
+        addresses := strings.Split(ranges.Ranges[i].Status, ", ")
 
-	return &ranges, nil
+        // Cria um campo separado para armazenar os endereços originais
+        originalAddresses := make([]string, len(addresses))
+        copy(originalAddresses, addresses)
+
+        // Converte endereços para hash160
+        var hash160s []string
+        for _, address := range addresses {
+            hash160 := wif.AddressToHash160(address) // Usando a função do pacote wif
+            hash160s = append(hash160s, fmt.Sprintf("%x", hash160))
+        }
+        ranges.Ranges[i].Status = strings.Join(hash160s, ", ")
+
+        // Armazena os endereços originais em um campo separado
+        ranges.Ranges[i].OriginalStatus = strings.Join(originalAddresses, ", ")
+    }
+
+    return &ranges, nil
 }
 
 // Incrementa a chave respeitando o padrão
@@ -84,7 +96,6 @@ func indexOf(chars string, char byte) int {
 // GenerateAndSendKeys otimizado com controle do número de goroutines
 func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan struct{}, blockSize int64, numGoroutines int) {
 	var wg sync.WaitGroup
-	var blockCount int64
 
 	for w := 0; w < numGoroutines; w++ {
 		wg.Add(1)
@@ -97,7 +108,6 @@ func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan
 				default:
 					baseKey := generateRandomKey(pattern)
 					currentKey := []byte(baseKey)
-					firstKeyInBlock := baseKey
 
 					for attempts := int64(0); attempts < blockSize; {
 						keysChan <- string(currentKey)
@@ -106,10 +116,6 @@ func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan
 							break
 						}
 					}
-
-					lastKeyInBlock := string(currentKey)
-					atomic.AddInt64(&blockCount, 1)
-					fmt.Printf("\nBloco #%d - Primeira: %s Última: %s", blockCount, firstKeyInBlock, lastKeyInBlock)
 				}
 			}
 		}()
