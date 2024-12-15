@@ -308,7 +308,7 @@ func saveFoundKeyDetails(privKey *big.Int, wifKey, address string) {
 func printProgress(startTime time.Time, keysChecked *int64) {
 	elapsed := time.Since(startTime)
 	chavesPorSegundo := float64(atomic.LoadInt64(keysChecked)) / elapsed.Seconds()
-	fmt.Printf("Keys Checked: %s  Time: %.8ss  Keys/s: %.2f\n", 
+	fmt.Printf("\rKeys Checked: %s  Time: %.8ss  Keys/s: %.2f", 
 		humanize.Comma(atomic.LoadInt64(keysChecked)), 
 		elapsed, 
 		chavesPorSegundo)
