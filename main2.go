@@ -37,7 +37,7 @@ func main() {
 
     // Exibe informações iniciais
     fmt.Println("Wallet a ser buscada:")
-    color.Green(ranges.Ranges[0].Status)
+    color.Green(ranges.Ranges[0].OriginalStatus)
     fmt.Println("Padrão da chave:")
     color.Yellow(ranges.Ranges[0].Key)
 
