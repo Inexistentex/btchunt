@@ -135,7 +135,7 @@ func LoadRanges(filename string) (*Ranges, error) {
         var hash160s []string
         for _, address := range addresses {
             hash160 := wif.AddressToHash160(address) // Usando a função do pacote wif
-            hash160s = append(hash160s, fmt.Sprintf("%x", OriginalStatus))
+            hash160s = append(hash160s, fmt.Sprintf("%x", hash160))
         }
         ranges.Ranges[i].Status = strings.Join(hash160s, ", ")
 
