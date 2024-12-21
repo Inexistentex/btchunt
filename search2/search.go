@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
         "math/rand"
+        "math/bits"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -95,35 +96,90 @@ func indexOf(chars string, char byte) int {
 
 // GenerateAndSendKeys otimizado com controle do número de goroutines
 func GenerateAndSendKeys(pattern string, keysChan chan<- string, stopSignal chan struct{}, blockSize int64, numGoroutines int) {
-	var wg sync.WaitGroup
+    var wg sync.WaitGroup
 
-	for w := 0; w < numGoroutines; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for {
-				select {
-				case <-stopSignal:
-					return
-				default:
-					baseKey := generateRandomKey(pattern)
-					currentKey := []byte(baseKey)
+    for w := 0; w < numGoroutines; w++ {
+        wg.Add(1)
+        go func(id int) {
+            defer wg.Done()
+            
+            // Determina o modo de operação baseado no ID da goroutine
+            fullyRandom := id%2 == 0
+            xoshiro := NewXoshiro256()
 
-					for attempts := int64(0); attempts < blockSize; {
-						keysChan <- string(currentKey)
-						attempts++
-						if !incrementKeyPattern(currentKey, pattern) {
-							break
-						}
-					}
-				}
-			}
-		}()
-	}
+            for {
+                select {
+                case <-stopSignal:
+                    return
+                default:
+                    if fullyRandom {
+                        // Modo totalmente aleatório
+                        for attempts := int64(0); attempts < blockSize; attempts++ {
+                            // Gera uma chave completamente aleatória respeitando o padrão
+                            key := make([]byte, len(pattern))
+                            for i := 0; i < len(pattern); i++ {
+                                if pattern[i] == 'x' {
+                                    // Usa Xoshiro para gerar números aleatórios
+                                    randVal := xoshiro.Next() % 16
+                                    key[i] = "0123456789abcdef"[randVal]
+                                } else {
+                                    key[i] = pattern[i]
+                                }
+                            }
+                            keysChan <- string(key)
+                        }
+                    } else {
+                        // Modo sequencial com base aleatória
+                        baseKey := generateRandomKey(pattern)
+                        currentKey := []byte(baseKey)
 
-	wg.Wait()
+                        for attempts := int64(0); attempts < blockSize; {
+                            keysChan <- string(currentKey)
+                            attempts++
+                            if !incrementKeyPattern(currentKey, pattern) {
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+        }(w)
+    }
+
+    wg.Wait()
 }
 
+// Estrutura Xoshiro256 para geração de números aleatórios
+type Xoshiro256 struct {
+    s [4]uint64
+}
+
+// NewXoshiro256 inicializa um novo gerador Xoshiro256
+func NewXoshiro256() *Xoshiro256 {
+    x := &Xoshiro256{}
+    // Inicializa com valores aleatórios
+    x.s[0] = uint64(time.Now().UnixNano())
+    x.s[1] = uint64(rand.Int63())
+    x.s[2] = uint64(rand.Int63())
+    x.s[3] = uint64(rand.Int63())
+    return x
+}
+
+// Next gera o próximo número aleatório
+func (x *Xoshiro256) Next() uint64 {
+    result := bits.RotateLeft64(x.s[1] * 5, 7) * 9
+    t := x.s[1] << 17
+
+    x.s[2] ^= x.s[0]
+    x.s[3] ^= x.s[1]
+    x.s[1] ^= x.s[2]
+    x.s[0] ^= x.s[3]
+
+    x.s[2] ^= t
+    x.s[3] = bits.RotateLeft64(x.s[3], 45)
+
+    return result
+}
 // generateRandomKey gera uma chave aleatória inicial baseada no padrão
 func generateRandomKey(pattern string) string {
     chars := "0123456789abcdef"
@@ -143,29 +199,34 @@ func generateRandomKey(pattern string) string {
 
 
 // SearchInBlockBatch processa as chaves em lotes de forma eficiente
-func SearchInBlockBatch(wallets []string, keysChan <-chan string, stopSignal chan struct{}, startTime time.Time, id int, keysChecked *int64, checkInterval int64, batchSize int) {
-	walletMap := make(map[string]struct{})
-	for _, wallet := range wallets {
-		walletMap[wallet] = struct{}{}
-	}
+func SearchInBlockBatch(wallets []string, keysChan <-chan string, stopSignal chan struct{}, 
+    startTime time.Time, id int, keysChecked *int64, checkInterval int64, batchSize int) {
+    
+    fullyRandom := id%2 == 0
+    walletMap := make(map[string]struct{})
+    for _, wallet := range wallets {
+        walletMap[wallet] = struct{}{}
+    }
 
-	var keyBatch []string
-	for keyHex := range keysChan {
-		select {
-		case <-stopSignal:
-			return
-		default:
-			keyBatch = append(keyBatch, keyHex)
-			if len(keyBatch) == batchSize {
-				processBatchOptimized(keyBatch, walletMap, stopSignal, keysChecked, checkInterval, startTime)
-				keyBatch = keyBatch[:0]
-			}
-		}
-	}
+    var keyBatch []string
+    for keyHex := range keysChan {
+        select {
+        case <-stopSignal:
+            return
+        default:
+            keyBatch = append(keyBatch, keyHex)
+            if len(keyBatch) == batchSize {
+                processBatchOptimized(keyBatch, walletMap, stopSignal, keysChecked, 
+                    checkInterval, startTime, fullyRandom)
+                keyBatch = keyBatch[:0]
+            }
+        }
+    }
 
-	if len(keyBatch) > 0 {
-		processBatchOptimized(keyBatch, walletMap, stopSignal, keysChecked, checkInterval, startTime)
-	}
+    if len(keyBatch) > 0 {
+        processBatchOptimized(keyBatch, walletMap, stopSignal, keysChecked, 
+            checkInterval, startTime, fullyRandom)
+    }
 }
 
 // checkRepeatedChars verifica se a chave possui 3 ou mais caracteres consecutivos repetidos
@@ -187,7 +248,15 @@ func checkRepeatedChars(key string) bool {
 
 
 // processBatchOptimized processa um lote de chaves
-func processBatchOptimized(keyBatch []string, walletMap map[string]struct{}, stopSignal chan struct{}, keysChecked *int64, checkInterval int64, startTime time.Time) {
+func processBatchOptimized(keyBatch []string, walletMap map[string]struct{}, stopSignal chan struct{}, 
+    keysChecked *int64, checkInterval int64, startTime time.Time, fullyRandom bool) {
+    
+    // Determina o modo de busca
+    mode := "Sequencial"
+    if fullyRandom {
+        mode = "Aleatório"
+    }
+
     for _, keyHex := range keyBatch {
         // Incrementa o contador antes de qualquer filtro ou processamento
         if atomic.AddInt64(keysChecked, 1)%checkInterval == 0 {
@@ -214,7 +283,7 @@ func processBatchOptimized(keyBatch []string, walletMap map[string]struct{}, sto
             if _, exists := walletMap[addressHash160Hex]; exists {
                 wifKey := wif.PrivateKeyToWIF(privKey)
                 address := wif.PublicKeyToAddress(pubKey)
-                saveFoundKeyDetails(privKey, wifKey, address)
+                saveFoundKeyDetails(privKey, wifKey, address, mode)
                 close(stopSignal)
                 return
             }
@@ -223,23 +292,18 @@ func processBatchOptimized(keyBatch []string, walletMap map[string]struct{}, sto
 }
 
 // saveFoundKeyDetails salva os detalhes da chave encontrada
-func saveFoundKeyDetails(privKey *big.Int, wifKey, address string) {
-	fmt.Println("\n-------------------CHAVE ENCONTRADA!!!!-------------------")
-	fmt.Printf("Private key: %064x\n", privKey)
-	fmt.Printf("WIF: %s\n", wifKey)
-	fmt.Printf("Endereço: %s\n", address)
+func saveFoundKeyDetails(privKey *big.Int, wifKey, address string, mode string) {
+    fmt.Println(" ")
+    fmt.Println("-------------------CHAVE ENCONTRADA!!!!-------------------")
+    fmt.Printf("Modo de Busca: %s\n", mode)  // Exibe o modo de busca
+    fmt.Printf("Private key: %064x\n", privKey)
+    fmt.Printf("WIF: %s\n", wifKey)
+    fmt.Printf("Endereço: %s\n", address)
 
-	file, err := os.OpenFile("found_keys.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		fmt.Printf("Erro ao salvar chave encontrada: %v\n", err)
-		return
-	}
-	defer file.Close()
-
-	_, err = file.WriteString(fmt.Sprintf("\nPrivate key: %064x\nWIF: %s\nEndereço: %s\n", privKey, wifKey, address))
-	if err != nil {
-		fmt.Printf("Erro ao escrever chave encontrada: %v\n", err)
-	}
+    file, _ := os.OpenFile("found_keys.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    defer file.Close()
+    file.WriteString(fmt.Sprintf("Modo de Busca: %s\nPrivate key: %064x\nWIF: %s\nEndereço: %s\n", 
+        mode, privKey, wifKey, address))
 }
 
 // printProgress mostra o progresso da busca
