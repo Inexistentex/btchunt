@@ -9,70 +9,67 @@ import (
 	"sync"
 	"time"
 
-	"btchunt/search"
+	"btchunt/search" // Certifique-se que este import está correto para o seu projeto
+
 	"github.com/fatih/color"
 )
 
 const (
-	checkInterval  = 500000 // Checagem a cada 200k de chaves
-	jumpInterval   = 60 // Tempo em segundos para ver0ificar um intervalo
-	numGoroutines  = 8 // Threads da CPU
+	checkInterval  = 500000       // Checagem a cada 500k de chaves
+	jumpInterval   = 60           // Tempo em segundos para verificar um intervalo
+	numGoroutines  = 8            // Threads da CPU
 	blockSize      = int64(10000) // Tamanho dos blocos
-	batchSize      = 100000 // Tamanho do lote para verificação
+	batchSize      = 100000       // Tamanho do lote para verificação
 )
 
 var rng = rand.New(rand.NewSource(time.Now().UnixNano()))
 
 func main() {
-    // Declaração da variável ranges e err
-    ranges, err := search.LoadRanges("ranges.json")
-    if err != nil {
-        log.Fatalf("Failed to load ranges: %v", err)
-    }
+	// Carrega os ranges do arquivo
+	ranges, err := search.LoadRanges("ranges.json")
+	if err != nil {
+		log.Fatalf("Failed to load ranges: %v", err)
+	}
 
-    // Usando uma raw string para a arte ASCII
-    color.Cyan(`
+	// Arte ASCII
+	color.Cyan(`
 ██████╗ ████████╗ ██████╗██╗  ██╗██╗   ██╗███╗   ██╗████████╗
 ██╔══██╗╚══██╔══╝██╔════╝██║  ██║██║   ██║████╗  ██║╚══██╔══╝
 ██████╔╝   ██║   ██║     ███████║██║   ██║██╔██╗ ██║   ██║   
 ██╔══██╗   ██║   ██║     ██╔══██║██║   ██║██║╚██╗██║   ██║   
 ██████╔╝   ██║   ╚██████╗██║  ██║╚██████╔╝██║ ╚████║   ██║   
 ╚═════╝    ╚═╝    ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   
-v1.7
+v1.8 - Deadlock Fixed
 `)
 
-    var rangeNumber int
-    if len(ranges.Ranges) == 1 {
-        // Exibe os endereços originais
-        fmt.Println("Wallets a serem buscadas:")
-        color.Green(ranges.Ranges[rangeNumber].OriginalStatus)
+	var rangeNumber int
+	if len(ranges.Ranges) == 1 {
+		fmt.Println("Wallets a serem buscadas:")
+		color.Green(ranges.Ranges[rangeNumber].OriginalStatus)
+		color.Yellow("Apenas um intervalo detectado. Desabilitando jumpInterval.")
+		rangeNumber = 0
+	} else {
+		fmt.Println("Wallets a serem buscadas:")
+		color.Green(ranges.Ranges[rangeNumber].OriginalStatus)
+		color.Green("Múltiplos intervalos detectados. jumpInterval ativado.")
+		rangeNumber = getRandomRange(len(ranges.Ranges))
+	}
 
-        color.Yellow("Apenas um intervalo detectado. Desabilitando jumpInterval.")
-        rangeNumber = 0 // Define como o único intervalo disponível
-    } else {
-        // Exibe os endereços originais
-        fmt.Println("Wallets a serem buscadas:")
-        color.Green(ranges.Ranges[rangeNumber].OriginalStatus)
+	privKeyHex := ranges.Ranges[rangeNumber].Min
+	maxPrivKeyHex := ranges.Ranges[rangeNumber].Max
+	wallets := strings.Split(ranges.Ranges[rangeNumber].Status, ", ")
 
-        color.Green("Múltiplos intervalos detectados. jumpInterval ativado.")
-        rangeNumber = getRandomRange(len(ranges.Ranges))
-    }
-
-    privKeyHex := ranges.Ranges[rangeNumber].Min
-    maxPrivKeyHex := ranges.Ranges[rangeNumber].Max
-    wallets := strings.Split(ranges.Ranges[rangeNumber].Status, ", ")
-
-    privKeyInt := new(big.Int)
-    privKeyInt.SetString(privKeyHex[2:], 16)
-    maxPrivKeyInt := new(big.Int)
-    maxPrivKeyInt.SetString(maxPrivKeyHex[2:], 16)
-
+	privKeyInt := new(big.Int)
+	privKeyInt.SetString(privKeyHex[2:], 16)
+	maxPrivKeyInt := new(big.Int)
+	maxPrivKeyInt.SetString(maxPrivKeyHex[2:], 16)
 
 	startTime := time.Now()
-	stopSignal := make(chan struct{})
+	stopSignal := make(chan struct{}) // Canal para sinalizar parada
 	var wg sync.WaitGroup
 	var keysChecked int64
 
+	// Inicializa o gerenciador de saltos entre intervalos
 	intervalJumper := &search.IntervalJumper{
 		Ranges:        ranges,
 		PrivKeyInt:    privKeyInt,
@@ -81,7 +78,10 @@ v1.7
 		StopSignal:    stopSignal,
 	}
 
-	taskChan := make(chan *big.Int, numGoroutines)
+	// Canal de tarefas com buffer
+	taskChan := make(chan *big.Int, numGoroutines*2)
+
+	// Inicia os Workers
 	for i := 0; i < numGoroutines; i++ {
 		wg.Add(1)
 		go func(id int) {
@@ -90,22 +90,28 @@ v1.7
 		}(i)
 	}
 
-	if len(ranges.Ranges) > 1 { // Ativa o jumpInterval apenas se houver mais de um intervalo
+	// Inicia o Jumper se necessário
+	if len(ranges.Ranges) > 1 {
 		go func() {
 			intervalJumper.Start(jumpInterval)
 		}()
 	}
 
-	// Distribui blocos para processamento
+	// --- LOOP PRINCIPAL CORRIGIDO ---
+	// Distribui blocos até que o sinal de parada seja acionado
 	for {
+		// 1. Gera o bloco
+		block := search.GetRandomBlock(privKeyInt, maxPrivKeyInt, blockSize, false)
+
+		// 2. Tenta enviar o bloco OU sair se o stopSignal for fechado
 		select {
+		case taskChan <- block:
+			// Bloco enviado com sucesso, continua o loop
 		case <-stopSignal:
-			close(taskChan)
-			wg.Wait()
-			return
-		default:
-			block := search.GetRandomBlock(privKeyInt, maxPrivKeyInt, blockSize, false)
-			taskChan <- block
+			// Sinal de parada recebido (chave encontrada), encerra tudo
+			close(taskChan) // Fecha o canal para garantir que workers restantes saiam
+			wg.Wait()       // Espera todos os workers terminarem
+			return          // Encerra o programa
 		}
 	}
 }
